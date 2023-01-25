@@ -1,0 +1,263 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+data_ps4 = pd.read_csv('../input/videogames-sales-dataset/PS4_GamesSales.csv', encoding='latin1')
+data_ps4.head()
+data_xbox = pd.read_csv('../input/videogames-sales-dataset/XboxOne_GameSales.csv', encoding = 'latin1')
+data_xbox.head()
+sns.set_style('darkgrid')
+ax = sns.barplot(x = 'Game', y = "Global", data = data_ps4[:10])
+ax.figure.set_size_inches(14, 9)
+ax.set_title("Most Sold Games - PS4", fontsize = 28)
+ax.set_ylabel('Global Sales (Millions)', fontsize = 18)
+ax.set_xlabel('Games', fontsize = 18)
+plt.xticks(rotation = 90)
+plt.show()
+ax = sns.barplot(x = 'Game', y = "Global", data = data_xbox[:10])
+ax.figure.set_size_inches(14, 9)
+ax.set_title("Most Sold Games - XBOX", fontsize = 28)
+ax.set_ylabel('Global Sales (Millions)', fontsize = 18)
+ax.set_xlabel('Games', fontsize = 18)
+plt.xticks(rotation = 90)
+plt.show()
+data_ps4.insert(0, 'Game_ID', range(len(data_ps4)))
+data_ps4 = data_ps4.set_index('Game_ID')
+data_ps4.head()
+game_ids = list()
+
+###The game ID was added for each game in Playstation 4 and the code below adds the same Game ID for games that already has been showed up, otherwise it creates a new game id.
+
+for i, game_name in enumerate(data_xbox['Game']):  
+  if data_ps4['Game'].str.contains(game_name).any():
+    game_id = data_ps4.query('Game == "%s"' % game_name).index
+    
+    if len(game_id) == 0:
+      game_id = len(data_ps4) + i + 1
+    else:
+      game_id = game_id[0]
+
+  else:
+    game_id = len(data_ps4) + i + 1
+
+  game_ids.append(game_id)
+  data_xbox.insert(0, 'Game_ID', game_ids)
+  
+  data_xbox = data_xbox.set_index('Game_ID')
+data_xbox = data_xbox.drop('Pos', axis=1)
+data_xbox.head()
+
+inner_join_games = data_ps4.join(data_xbox[['North America', 'Europe', 'Japan', 'Rest of World', 'Global']], how = 'inner', rsuffix='_xbox', lsuffix = '_ps4')
+inner_join_games
+
+##Processing the data for Analysis
+
+inner_join_games['Global'] = inner_join_games['Global_ps4'] + inner_join_games['Global_xbox']
+inner_join_games.isnull().sum()
+
+inner_join_games = inner_join_games.drop(['Publisher'], axis = 1)
+inner_join_games = inner_join_games.fillna(method='ffill')
+
+
+
+print(inner_join_games.isnull().sum())
+inner_join_games.head()
+
+##Comparing Consoles
+most_sold = inner_join_games.sort_values('Global', ascending = False)
+all_games = pd.concat([data_ps4.reset_index(), data_xbox.reset_index()], ignore_index=True)
+all_games = all_games.set_index('Game_ID')
+
+games_only_xbox = all_games.drop(data_ps4.index, errors = 'ignore').sort_values('Global', ascending = False)
+games_only_ps4 = all_games.drop(data_xbox.index, errors = 'ignore').sort_values('Global', ascending = False)
+games_only_ps4 = games_only_ps4.drop(11)
+games_only_xbox = games_only_xbox.drop(1045)
+games_only_ps4['Console'] = ['PS4'] * len(games_only_ps4)
+games_only_xbox['Console'] = ['Xbox'] * len(games_only_xbox)
+
+most_sold_exclusive = pd.concat([games_only_ps4.head(), games_only_xbox.head()])
+
+ax = sns.barplot(data = most_sold_exclusive, y = 'Game', x = 'Global', hue = 'Console', palette = ['#111166','#127112'], dodge=False)
+ax.figure.set_size_inches(14, 8)
+ax.set_title("Most Sold Exclusive Games", fontsize = 28)
+ax.set_xlabel('Global Sales (Millions)', fontsize = 18)
+ax.set_ylabel('Games', fontsize = 18)
+plt.legend(fontsize = 14)
+plt.show()
+
+#Most sold Exclusive Game
+
+categories_exclusive_ps4 = games_only_ps4.groupby('Genre').sum().sort_values('Global', ascending=False)
+categories_exclusive_xbox = games_only_xbox.groupby('Genre').sum().sort_values('Global', ascending=False)
+categories_exclusive_ps4['Console'] = ['PS4'] * len(categories_exclusive_ps4)
+categories_exclusive_xbox['Console'] = ['Xbox'] * len(categories_exclusive_xbox)
+categories_exclusive = pd.concat([categories_exclusive_ps4.reset_index(), categories_exclusive_xbox.reset_index()]).sort_values('Global', ascending=False)
+
+# Most Played Category
+
+ax = sns.barplot(data = categories_exclusive, y = 'Genre', x = 'Global', hue = 'Console', palette = ['#111166','#127112'])
+ax.figure.set_size_inches(14, 12)
+ax.set_title("Most Played Categories on Exclusives", fontsize = 28)
+ax.set_xlabel('Global Sales (Millions)', fontsize = 18)
+ax.set_ylabel('Games', fontsize = 18)
+plt.xticks(rotation = 90, fontsize = 12)
+plt.legend(fontsize = 14, loc='lower right')
+plt.show()
+
+
+# Analyzing all games through time
+
+ax = sns.barplot(data = all_games.groupby("Year").sum().head(6).reset_index(), x = 'Year', y = 'Global', color='#009999')
+ax.figure.set_size_inches(14, 9)
+ax.set_title('Global Sales per Year', fontsize=24)
+ax.set_xlabel('Year', fontsize=18)
+ax.set_ylabel('Global Sales (Millions)', fontsize=18)
+plt.xticks(rotation=45, fontsize=12)
+plt.show()
+
+#Global Sales Per Year
+
+categories_through_years = all_games.groupby(['Genre']).sum().sort_values('Global', ascending=False)
+categories_greater_than_20_global = categories_through_years.query('Global > 20')
+categories_greater_than_20_global = categories_greater_than_20_global.index.tolist()
+
+#Most Played Game
+
+most_played_categories = pd.DataFrame()
+
+for genre in categories_greater_than_20_global:
+  temp = all_games.query('Genre in "%s"' % genre)
+  most_played_categories = pd.concat([most_played_categories, temp])
+
+most_played_categories['Genre'].unique()
+
+#Most Sold Categories
+
+ax = sns.barplot(x = categories_through_years.index, y = categories_through_years['Global'], palette = 'bright')
+ax.figure.set_size_inches(14, 9)
+ax.set_title("Most Sold Categories", fontsize = 28)
+ax.set_ylabel('Global Sales (Millions)', fontsize = 18)
+ax.set_xlabel('Categories', fontsize = 18)
+plt.xticks(rotation = 90, fontsize = 12)
+
+#Genres thorugh the year
+
+ax = sns.lineplot(x = 'Year', y = 'Global', hue = 'Genre', data = most_played_categories.reset_index(),
+                  err_style=None, palette='bright')
+ax.figure.set_size_inches(22, 8)
+ax.set_title('Genres through Years', fontsize=24)
+ax.set_xlabel('Year', fontsize=18)
+ax.set_ylabel('Global Sales (Millions)', fontsize=18)
+plt.legend(loc = 'upper right', fontsize = 12)
+
+#Droping the year 2018 and 2019
+
+years = all_games.Year.dropna().unique()[:-2]
+# Take off 2019 and 2020
+
+#Game per year
+games_per_year = pd.DataFrame()
+
+for year in years:
+  game_year = pd.DataFrame(all_games.drop_duplicates('Game').reset_index().sort_values('Global', ascending = False) \
+                          .query('Year == %d' % int(year)).iloc[:3][['Game', 'Year', 'Global', 'Genre']])
+  games_per_year = pd.concat([games_per_year, game_year])
+
+games_per_year = games_per_year.sort_values('Year')
+
+games_per_year.query('Year == 2018')
+
+#Most sold games per yeat
+
+
+ax = sns.barplot(data = games_per_year, y = 'Game', x = 'Global', hue = 'Year', dodge=False, palette = 'tab10')
+ax.set_title('Most Sold Games in each Year', fontsize=24)
+ax.set_ylabel('Games', fontsize=18)
+ax.set_xlabel('Global Sales (Millions)', fontsize=18)
+plt.legend(loc = 'lower right', fontsize = 14)
+plt.yticks(fontsize = 12)
+ax.figure.set_size_inches(18, 10)
+plt.show()
+
+#Analyzing zones of revenue
+zones = [all_games['North America'].sum(), all_games.Europe.sum(), all_games.Japan.sum(), all_games['Rest of World'].sum()]
+labels = ['North America', 'Europe', 'Japan', 'Rest of World']
+colors = ['#40bf40', '#66c2ff', '#ff3300', '#e6ac00']
+explode = [0.05, 0.05, 0.05, 0.05]
+
+plt.rc('figure', figsize = (12, 12))
+
+fig, ax = plt.subplots()
+ax.pie(zones, labels = labels, autopct = '%.1f%%', colors = colors, explode = explode, 
+        textprops=dict(color="k", fontsize=20), pctdistance=0.85)
+
+# Create the donut aspect
+centre_circle = plt.Circle((0, 0), 0.70, fc='white')
+fig = plt.gcf()
+ax.add_artist(centre_circle)
+
+ax.axis('equal')
+
+plt.show()
+
+all_games.head(6)
+
+#Where does revenue come from?
+
+plt.rc('figure', figsize = (16, 12))
+fig, ax = plt.subplots(2, 3)
+
+for i in range(6):
+  # Organize the subplots
+  axis_index = [0 if i < 3 else 1, i if i < 3 else i % 3]
+
+  # Collect the data and explode the index with biggest value
+  game_data = list(all_games.iloc[i][4:8])
+  index_biggest_value_game_data = np.argmax(game_data)
+  local_explode = [0, 0, 0, 0]
+  local_explode[index_biggest_value_game_data] += 0.1
+  
+  # Create the pie for each game and set its title
+  ax[axis_index[0], axis_index[1]].pie(game_data, autopct = '%.1f%%', colors = colors, explode = local_explode, 
+                                       textprops=dict(color="k", fontsize=12), shadow = True)
+  
+  ax[axis_index[0], axis_index[1]].set_title("%s" % all_games.iloc[i][0], fontsize=14)
+
+
+# Legend in the figure and a super title
+fig.legend(labels, fontsize = 14, loc = 'center right')
+plt.suptitle('Where does the revenue from the Most Sold Games come from?', fontsize = 26)
+plt.show()
+
+#games mostly sold for zone
+games_most_sold_for_zone = np.array([np.argmax(row[['North America', 'Europe', 'Japan', 'Rest of World']]) for i, row in all_games.iterrows()])
+
+games_sold_more_north_america = all_games[games_most_sold_for_zone == 0] # North America
+games_sold_more_europe        = all_games[games_most_sold_for_zone == 1] # Europe
+games_sold_more_japan         = all_games[games_most_sold_for_zone == 2] # Japan 
+
+
+(games_most_sold_for_zone == 3).sum()
+
+
+
+games_sold_more_north_america['Zone'] = ['North America'] * len(games_sold_more_north_america)
+games_sold_more_europe['Zone'] = ['Europe'] * len(games_sold_more_europe)
+games_sold_more_japan['Zone'] = ['Japan'] * len(games_sold_more_japan)
+
+
+
+top_4_each_zone = pd.concat([games_sold_more_north_america.head(4)[['Game', 'North America', 'Zone']].rename(columns = {'North America': 'Zone Revenue'}),
+                             games_sold_more_europe.head(4)[['Game', 'Europe', 'Zone']].rename(columns = {'Europe': 'Zone Revenue'}),
+                             games_sold_more_japan.head(4)[['Game', 'Japan', 'Zone']].rename(columns = {'Japan': 'Zone Revenue'})])
+
+top_4_each_zone
+
+ax = sns.barplot(data = top_4_each_zone, x = 'Zone Revenue', y = 'Game', hue = 'Zone', dodge = False, palette = colors[:-1])
+ax.set_title('Zones where the Game sold the Most', fontsize=24)
+ax.set_ylabel('Games', fontsize=18)
+ax.set_xlabel('Local Sales (Millions)', fontsize=18)
+plt.legend(loc = 'lower right', fontsize = 14)
+plt.yticks(fontsize = 12)
+ax.figure.set_size_inches(14, 10)
+plt.show()
